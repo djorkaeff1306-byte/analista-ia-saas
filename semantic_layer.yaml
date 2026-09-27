@@ -1,0 +1,437 @@
+# =====================================================================
+# CAPA SEMÁNTICA — diccionario de datos + diccionario de métricas
+# SaaS contable para pymes en LATAM (datos sintéticos)
+#
+# Objetivo: que un humano o un agente (LLM) entienda qué significa cada
+# tabla y cada métrica, cómo calcularla y cómo leerla, sin preguntarle
+# al equipo de datos.
+#
+# Convenciones:
+#   - Dinero en USD (ya normalizado por país con price_multiplier).
+#   - Fechas como 'YYYY-MM-DD'. Meses como 'YYYY-MM' (calendar_months.month).
+#   - SQL para DuckDB (se pueden usar sus funciones de fecha, p. ej. date_trunc).
+#   - Fecha de corte del dataset: 2026-08-31.
+# =====================================================================
+
+version: 1
+fecha_corte: "2026-08-31"
+
+# ---------------------------------------------------------------------
+# TABLAS
+# ---------------------------------------------------------------------
+tables:
+  companies:
+    description: Una fila por empresa (pyme) que se registró y abrió un trial.
+    grain: company_id
+    columns:
+      company_id: Identificador único de la empresa.
+      country_code: País (CO, MX, CR, PE, AR, DO, PA, CL). Ver dim_countries.
+      industry: Industria declarada al registrarse.
+      size_segment: micro | pequena | mediana.
+      acquisition_channel: organico | paid_search | referido | contador_aliado.
+      signup_date: Fecha de registro = inicio del trial.
+      trial_end_date: Fin del trial (signup_date + 15 días).
+
+  subscriptions:
+    description: >
+      Una fila por periodo de suscripción pagada. Un upgrade cierra la
+      suscripción actual (status = upgraded) y abre una nueva con
+      previous_subscription_id apuntando a la anterior.
+      Empresas que nunca pagaron no aparecen aquí.
+    grain: subscription_id
+    columns:
+      subscription_id: Identificador único.
+      company_id: FK a companies.
+      plan_id: FK a dim_plans.
+      start_date: Inicio del periodo pagado.
+      end_date: Fin del periodo. NULL = sigue activa.
+      status: active | churned | upgraded.
+      churn_type: voluntario | involuntario (falló el pago). NULL si no hubo churn.
+      mrr_usd: Ingreso mensual recurrente de esta suscripción, en USD.
+      previous_subscription_id: Suscripción anterior si esta nace de un upgrade.
+
+  payments:
+    description: >
+      Una fila por intento de cobro. Si el primer intento falla, puede haber
+      un segundo intento (attempt_number = 2) 3 días después, o bien la
+      suscripción termina como churn involuntario.
+    grain: payment_id
+    columns:
+      payment_id: Identificador único.
+      subscription_id: FK a subscriptions.
+      company_id: FK a companies.
+      due_date: Fecha en que correspondía el cobro.
+      attempt_number: 1 = primer intento, 2 = reintento.
+      attempt_date: Fecha del intento.
+      amount_usd: Monto cobrado o intentado.
+      status: paid | failed.
+
+  usage_monthly:
+    description: Uso del producto por empresa y mes (incluye meses de trial).
+    grain: company_id + month
+    columns:
+      company_id: FK a companies.
+      month: Primer día del mes.
+      invoices_issued: Facturas electrónicas emitidas por la empresa en el mes.
+      active_users: Usuarios distintos que iniciaron sesión en el mes.
+
+  dim_plans:
+    description: Catálogo de planes.
+    grain: plan_id
+    columns:
+      plan_id: emprendedor | pyme | pro | plus.
+      plan_name: Nombre comercial del plan para mostrar (Emprendedor, Pyme, Pro, Plus).
+      list_price_usd: Precio de lista mensual antes del ajuste por país.
+      invoice_limit: Tope de facturas por mes (NULL = ilimitado).
+      tier: Orden del plan (1 = más básico).
+
+  dim_countries:
+    description: Catálogo de países.
+    grain: country_code
+    columns:
+      country_code: Código ISO de 2 letras.
+      country_name: Nombre del país.
+      currency: Moneda local.
+      price_multiplier: Ajuste de precio del país sobre el precio de lista.
+
+  calendar_months:
+    description: Tabla auxiliar con un registro por mes, para series temporales.
+    grain: month
+    columns:
+      month: Mes en formato YYYY-MM.
+      month_start: Primer día del mes.
+      month_end: Último día del mes.
+      prev_month_end: Último día del mes anterior (útil para "inicio de mes").
+
+relationships:
+  - companies.company_id = subscriptions.company_id
+  - subscriptions.subscription_id = payments.subscription_id
+  - companies.company_id = usage_monthly.company_id
+  - subscriptions.plan_id = dim_plans.plan_id
+  - companies.country_code = dim_countries.country_code
+
+# Dimensiones por las que se pueden abrir casi todas las métricas
+common_dimensions:
+  - companies.country_code
+  - companies.size_segment
+  - companies.acquisition_channel
+  - companies.industry
+  - subscriptions.plan_id
+
+# ---------------------------------------------------------------------
+# MÉTRICAS
+# Cada métrica: definición, fórmula, SQL base (serie mensual), cómo leerla,
+# equipo dueño y sinónimos (para que el agente entienda la pregunta).
+# ---------------------------------------------------------------------
+metrics:
+
+  mrr:
+    name: MRR (Monthly Recurring Revenue)
+    synonyms: [ingreso recurrente, ingresos mensuales, facturación recurrente]
+    owner: Finance
+    definition: Suma del mrr_usd de las suscripciones activas al cierre del mes.
+    formula: SUM(mrr_usd) de suscripciones con start_date <= fin de mes y (end_date NULL o > fin de mes)
+    sql: |
+      SELECT c.month, ROUND(SUM(s.mrr_usd), 2) AS mrr_usd
+      FROM calendar_months c
+      JOIN subscriptions s
+        ON s.start_date <= c.month_end
+       AND (s.end_date IS NULL OR s.end_date > c.month_end)
+      GROUP BY c.month
+      ORDER BY c.month
+    how_to_read: >
+      Métrica principal de tamaño del negocio. Mirar su variación mes a mes
+      junto con la descomposición new / expansion / churned MRR para entender
+      qué la mueve.
+    example_questions:
+      - ¿Cuál es el MRR actual?
+      - ¿Cómo evolucionó el MRR de México en 2026?
+
+  active_customers:
+    name: Clientes activos (pagando)
+    synonyms: [clientes pagos, base activa, logos activos]
+    owner: Finance
+    definition: Empresas distintas con al menos una suscripción activa al cierre del mes.
+    sql: |
+      SELECT c.month, COUNT(DISTINCT s.company_id) AS active_customers
+      FROM calendar_months c
+      JOIN subscriptions s
+        ON s.start_date <= c.month_end
+       AND (s.end_date IS NULL OR s.end_date > c.month_end)
+      GROUP BY c.month
+      ORDER BY c.month
+    how_to_read: No incluye empresas en trial. Para trials usar companies.
+
+  arpa:
+    name: ARPA (ingreso promedio por cliente)
+    synonyms: [ticket promedio, ARPU, ingreso por cliente]
+    owner: Finance
+    definition: MRR / clientes activos al cierre del mes.
+    sql: |
+      SELECT c.month,
+             ROUND(SUM(s.mrr_usd) * 1.0 / COUNT(DISTINCT s.company_id), 2) AS arpa_usd
+      FROM calendar_months c
+      JOIN subscriptions s
+        ON s.start_date <= c.month_end
+       AND (s.end_date IS NULL OR s.end_date > c.month_end)
+      GROUP BY c.month
+      ORDER BY c.month
+    how_to_read: >
+      Sube con upgrades o con mezcla hacia planes caros/países con mayor
+      precio. Si el MRR crece pero el ARPA cae, el crecimiento viene de
+      clientes más pequeños.
+
+  new_mrr:
+    name: New MRR
+    synonyms: [MRR nuevo, ingreso de clientes nuevos]
+    owner: Growth
+    definition: MRR de la primera suscripción de cada empresa, en el mes en que empieza.
+    sql: |
+      WITH first_sub AS (
+        SELECT s.*
+        FROM subscriptions s
+        WHERE s.previous_subscription_id IS NULL
+      )
+      SELECT c.month,
+             COUNT(*) AS new_customers,
+             ROUND(SUM(f.mrr_usd), 2) AS new_mrr_usd
+      FROM calendar_months c
+      JOIN first_sub f ON f.start_date BETWEEN c.month_start AND c.month_end
+      GROUP BY c.month
+      ORDER BY c.month
+
+  expansion_mrr:
+    name: Expansion MRR
+    synonyms: [upgrades, MRR de expansión, upsell]
+    owner: Sales
+    definition: Diferencia de MRR entre la nueva y la anterior suscripción en cada upgrade, por mes del upgrade.
+    sql: |
+      SELECT c.month,
+             COUNT(*) AS upgrades,
+             ROUND(SUM(n.mrr_usd - o.mrr_usd), 2) AS expansion_mrr_usd
+      FROM subscriptions n
+      JOIN subscriptions o ON o.subscription_id = n.previous_subscription_id
+      JOIN calendar_months c ON n.start_date BETWEEN c.month_start AND c.month_end
+      GROUP BY c.month
+      ORDER BY c.month
+
+  churned_mrr:
+    name: Churned MRR
+    synonyms: [MRR perdido, ingreso perdido por bajas]
+    owner: Finance
+    definition: MRR de suscripciones con status = churned cuyo end_date cae en el mes. Separado por tipo de churn.
+    sql: |
+      SELECT c.month,
+             ROUND(SUM(s.mrr_usd), 2) AS churned_mrr_usd,
+             ROUND(SUM(CASE WHEN s.churn_type = 'voluntario'   THEN s.mrr_usd ELSE 0 END), 2) AS churned_mrr_voluntario,
+             ROUND(SUM(CASE WHEN s.churn_type = 'involuntario' THEN s.mrr_usd ELSE 0 END), 2) AS churned_mrr_involuntario
+      FROM calendar_months c
+      JOIN subscriptions s
+        ON s.status = 'churned'
+       AND s.end_date BETWEEN c.month_start AND c.month_end
+      GROUP BY c.month
+      ORDER BY c.month
+    how_to_read: >
+      El churn involuntario (pagos fallidos) suele resolverse con operaciones
+      de cobro (reintentos, recordatorios); el voluntario con producto,
+      precio o éxito del cliente. Nunca leerlos juntos sin separarlos.
+
+  logo_churn_rate:
+    name: Tasa de churn de clientes (logo churn)
+    synonyms: [churn, tasa de cancelación, bajas]
+    owner: Finance
+    definition: Clientes que hicieron churn en el mes / clientes activos al inicio del mes.
+    sql: |
+      WITH base AS (
+        SELECT c.month, COUNT(DISTINCT s.company_id) AS customers_start
+        FROM calendar_months c
+        JOIN subscriptions s
+          ON s.start_date <= c.prev_month_end
+         AND (s.end_date IS NULL OR s.end_date > c.prev_month_end)
+        GROUP BY c.month
+      ),
+      churned AS (
+        SELECT c.month, COUNT(DISTINCT s.company_id) AS churned_customers
+        FROM calendar_months c
+        JOIN subscriptions s
+          ON s.status = 'churned'
+         AND s.end_date BETWEEN c.month_start AND c.month_end
+        GROUP BY c.month
+      )
+      SELECT b.month, b.customers_start,
+             COALESCE(ch.churned_customers, 0) AS churned_customers,
+             ROUND(COALESCE(ch.churned_customers, 0) * 1.0 / NULLIF(b.customers_start, 0), 4) AS logo_churn_rate
+      FROM base b
+      LEFT JOIN churned ch ON ch.month = b.month
+      ORDER BY b.month
+    how_to_read: >
+      Mensual, no anualizada. En SaaS pyme un 2-4% mensual es habitual.
+      Con bases pequeñas (un país o plan chico) la tasa es volátil:
+      revisar siempre customers_start antes de sacar conclusiones.
+
+  gross_revenue_churn_rate:
+    name: Gross revenue churn
+    synonyms: [churn de ingresos, revenue churn]
+    owner: Finance
+    definition: Churned MRR del mes / MRR al inicio del mes.
+    sql: |
+      WITH start_mrr AS (
+        SELECT c.month, SUM(s.mrr_usd) AS mrr_start
+        FROM calendar_months c
+        JOIN subscriptions s
+          ON s.start_date <= c.prev_month_end
+         AND (s.end_date IS NULL OR s.end_date > c.prev_month_end)
+        GROUP BY c.month
+      ),
+      churned AS (
+        SELECT c.month, SUM(s.mrr_usd) AS churned_mrr
+        FROM calendar_months c
+        JOIN subscriptions s
+          ON s.status = 'churned'
+         AND s.end_date BETWEEN c.month_start AND c.month_end
+        GROUP BY c.month
+      )
+      SELECT m.month, ROUND(m.mrr_start, 2) AS mrr_start,
+             ROUND(COALESCE(ch.churned_mrr, 0) * 1.0 / NULLIF(m.mrr_start, 0), 4) AS gross_revenue_churn_rate
+      FROM start_mrr m
+      LEFT JOIN churned ch ON ch.month = m.month
+      ORDER BY m.month
+    how_to_read: >
+      Si es menor que el logo churn, se van más los clientes pequeños
+      (buena señal). Si es mayor, se están yendo clientes grandes.
+
+  net_revenue_retention:
+    name: NRR mensual (Net Revenue Retention)
+    synonyms: [retención neta, NRR, net retention]
+    owner: Finance
+    definition: (MRR inicio + expansion MRR − churned MRR) / MRR inicio. Excluye new MRR.
+    sql: |
+      WITH start_mrr AS (
+        SELECT c.month, SUM(s.mrr_usd) AS mrr_start
+        FROM calendar_months c
+        JOIN subscriptions s
+          ON s.start_date <= c.prev_month_end
+         AND (s.end_date IS NULL OR s.end_date > c.prev_month_end)
+        GROUP BY c.month
+      ),
+      churned AS (
+        SELECT c.month, SUM(s.mrr_usd) AS churned_mrr
+        FROM calendar_months c
+        JOIN subscriptions s
+          ON s.status = 'churned' AND s.end_date BETWEEN c.month_start AND c.month_end
+        GROUP BY c.month
+      ),
+      expansion AS (
+        SELECT c.month, SUM(n.mrr_usd - o.mrr_usd) AS expansion_mrr
+        FROM subscriptions n
+        JOIN subscriptions o ON o.subscription_id = n.previous_subscription_id
+        JOIN calendar_months c ON n.start_date BETWEEN c.month_start AND c.month_end
+        GROUP BY c.month
+      )
+      SELECT m.month,
+             ROUND((m.mrr_start + COALESCE(e.expansion_mrr, 0) - COALESCE(ch.churned_mrr, 0)) * 1.0
+                   / NULLIF(m.mrr_start, 0), 4) AS nrr_monthly
+      FROM start_mrr m
+      LEFT JOIN churned ch ON ch.month = m.month
+      LEFT JOIN expansion e ON e.month = m.month
+      ORDER BY m.month
+    how_to_read: Por encima de 1.0 la base existente crece sola, sin contar clientes nuevos.
+
+  trial_to_paid_conversion:
+    name: Conversión trial → pago
+    synonyms: [conversión, tasa de conversión de trials, activación comercial]
+    owner: Growth
+    definition: >
+      Empresas registradas en el mes (cohorte) que iniciaron una suscripción
+      pagada antes de terminar el trial / empresas registradas en el mes.
+    sql: |
+      SELECT c.month AS signup_month,
+             COUNT(*) AS signups,
+             SUM(CASE WHEN EXISTS (
+                   SELECT 1 FROM subscriptions s
+                   WHERE s.company_id = co.company_id
+                     AND s.previous_subscription_id IS NULL
+                     AND s.start_date <= co.trial_end_date)
+                 THEN 1 ELSE 0 END) AS converted,
+             ROUND(AVG(CASE WHEN EXISTS (
+                   SELECT 1 FROM subscriptions s
+                   WHERE s.company_id = co.company_id
+                     AND s.previous_subscription_id IS NULL
+                     AND s.start_date <= co.trial_end_date)
+                 THEN 1.0 ELSE 0.0 END), 4) AS conversion_rate
+      FROM companies co
+      JOIN calendar_months c ON co.signup_date BETWEEN c.month_start AND c.month_end
+      GROUP BY c.month
+      ORDER BY c.month
+    how_to_read: >
+      Es una métrica de cohorte: la cohorte del último mes está incompleta
+      porque hay trials que aún no terminan. Abrir por acquisition_channel
+      antes de concluir; los canales tienen calidades muy distintas.
+
+  activation_rate:
+    name: Tasa de activación
+    synonyms: [activación, empresas activadas, aha moment]
+    owner: Product
+    definition: Empresas que emitieron al menos 5 facturas en su mes de registro / empresas registradas ese mes.
+    sql: |
+      SELECT c.month AS signup_month,
+             COUNT(*) AS signups,
+             ROUND(AVG(CASE WHEN COALESCE(u.invoices_issued, 0) >= 5 THEN 1.0 ELSE 0.0 END), 4) AS activation_rate
+      FROM companies co
+      JOIN calendar_months c ON co.signup_date BETWEEN c.month_start AND c.month_end
+      LEFT JOIN usage_monthly u
+        ON u.company_id = co.company_id AND u.month = c.month_start
+      GROUP BY c.month
+      ORDER BY c.month
+    how_to_read: >
+      Indicador adelantado de conversión. Limitación: una empresa que se
+      registra a fin de mes tiene menos días para activarse.
+
+  payment_failure_rate:
+    name: Tasa de fallo de pagos
+    synonyms: [pagos rechazados, fallos de cobro, declines]
+    owner: Finance
+    definition: Primeros intentos de cobro fallidos / primeros intentos totales, por mes de due_date.
+    sql: |
+      SELECT c.month,
+             COUNT(*) AS first_attempts,
+             ROUND(AVG(CASE WHEN p.status = 'failed' THEN 1.0 ELSE 0.0 END), 4) AS payment_failure_rate
+      FROM payments p
+      JOIN calendar_months c ON p.due_date BETWEEN c.month_start AND c.month_end
+      WHERE p.attempt_number = 1
+      GROUP BY c.month
+      ORDER BY c.month
+    how_to_read: >
+      Normal ~5%. Un salto concentrado en un país suele apuntar a un
+      problema con una pasarela o un banco local, no al cliente.
+
+  invoices_per_active_customer:
+    name: Facturas por cliente activo
+    synonyms: [uso, engagement, facturas emitidas promedio]
+    owner: Product
+    definition: Promedio de facturas emitidas en el mes entre empresas con suscripción activa al cierre del mes.
+    sql: |
+      SELECT c.month,
+             ROUND(AVG(u.invoices_issued), 1) AS avg_invoices
+      FROM calendar_months c
+      JOIN subscriptions s
+        ON s.start_date <= c.month_end
+       AND (s.end_date IS NULL OR s.end_date > c.month_end)
+      JOIN usage_monthly u
+        ON u.company_id = s.company_id AND u.month = c.month_start
+      GROUP BY c.month
+      ORDER BY c.month
+    how_to_read: >
+      Una caída sostenida del uso en una empresa es la mejor señal
+      adelantada de churn voluntario (1-2 meses antes).
+
+# ---------------------------------------------------------------------
+# REGLAS PARA EL AGENTE
+# ---------------------------------------------------------------------
+agent_rules:
+  - Usa solo las tablas y columnas definidas arriba. Si una pregunta no se puede responder con ellas, dilo.
+  - Si la pregunta coincide con una métrica (o un sinónimo), parte de su SQL base y agrega filtros o GROUP BY.
+  - Para filtrar por país, segmento o canal, une con companies por company_id.
+  - Separa siempre churn voluntario e involuntario cuando hables de churn.
+  - Menciona si el último mes o la última cohorte están incompletos.
+  - Si una tasa se calcula sobre menos de 50 clientes, adviértelo.

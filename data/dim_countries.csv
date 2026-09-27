@@ -1,0 +1,9 @@
+country_code,country_name,currency,price_multiplier
+CO,Colombia,COP,1.0
+MX,México,MXN,1.1
+CR,Costa Rica,CRC,1.05
+PE,Perú,PEN,0.95
+AR,Argentina,ARS,0.8
+DO,República Dominicana,DOP,1.0
+PA,Panamá,USD,1.1
+CL,Chile,CLP,1.05

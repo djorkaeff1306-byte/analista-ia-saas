@@ -1,0 +1,26 @@
+# Entorno virtual
+.venv/
+
+# Secretos (API keys del LLM)
+.env
+
+# Gráficos y reportes generados en la sesión (no versionados; reports/ sí se versiona aparte)
+outputs/
+
+# Python
+__pycache__/
+*.pyc
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Configuración personal del editor
+.vscode/
+
+# Material de referencia de marca (ya aplicado en assets/ y .streamlit/)
+brand/
+
+# Notas, contexto de trabajo y material de evaluación: no se comparte en este repo
+CLAUDE.md
+eval/
+generate_data.py

@@ -1,0 +1,203 @@
+/* =====================================================================
+   Estilos de marca para la app de Streamlit
+   Paleta tomada de la referencia visual
+   ===================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --teal:        #30ABA9;  /* primario: botones, acentos, palabra destacada */
+  --teal-dark:   #1A7E7F;  /* hover, texto sobre fondo teal claro */
+  --teal-light:  #E6F7F7;  /* fondo de badges y chips */
+  --aqua:        #00E0C7;  /* acento brillante, usar poco */
+  --navy:        #0F172A;  /* títulos y navegación */
+  --navy-soft:   #1B222D;  /* títulos grandes */
+  --slate:       #475569;  /* párrafos */
+  --muted:       #64748B;  /* subtítulos, etiquetas */
+  --border:      #E2E8F0;  /* bordes finos */
+  --ok:          #349363;  /* estado positivo */
+  --ok-bg:       #DDFCE6;
+  --warn:        #B45309;
+  --warn-bg:     #FEF3C7;
+  --bad:         #DC2626;
+  --bad-bg:      #FEE2E2;
+  --radius:      14px;
+  --shadow:      0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+/* --- Base --------------------------------------------------------- */
+html, body, [class*="css"], .stApp, button, input, textarea {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+}
+.stApp { background: #FFFFFF; }
+.block-container { padding-top: 1.5rem; max-width: 1200px; }
+#MainMenu, footer { visibility: hidden; }
+header[data-testid="stHeader"] { background: transparent; }
+
+h1, h2, h3 { color: var(--navy-soft); font-weight: 700; letter-spacing: -0.02em; }
+p, li { color: var(--slate); }
+
+/* --- Barra superior ----------------------------------------------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.5rem 0 1.25rem; border-bottom: 1px solid var(--border);
+  margin-bottom: 2rem;
+}
+.topbar .brand { font-size: 1.6rem; font-weight: 700; color: #253E53; }
+.topbar .brand span { color: var(--teal); }
+.topbar .nav { color: var(--navy); font-size: 1rem; display: flex; gap: 1.75rem; }
+
+/* --- Hero ---------------------------------------------------------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  background: var(--teal-light); border-radius: 999px; padding: 0.3rem 0.9rem 0.3rem 0.3rem;
+  font-weight: 600; color: var(--teal-dark); font-size: 0.9rem;
+}
+.badge b {
+  background: var(--teal); color: #fff; border-radius: 999px;
+  padding: 0.2rem 0.7rem; font-size: 0.75rem; letter-spacing: 0.03em;
+}
+.eyebrow { color: var(--muted); font-size: 1.15rem; font-weight: 500; margin: 1.25rem 0 0.25rem; }
+.hero-title {
+  font-size: 3rem; line-height: 1.12; font-weight: 700; color: var(--navy-soft);
+  letter-spacing: -0.03em; margin: 0 0 0.75rem;
+}
+.hero-title .accent { color: var(--teal); }
+.hero-sub { color: var(--slate); font-size: 1.1rem; line-height: 1.6; max-width: 620px; }
+
+/* --- Tarjetas flotantes -------------------------------------------- */
+.card {
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1rem 1.25rem; margin-bottom: 1rem;
+}
+.card-kpi { text-align: center; }
+.card-kpi .value { font-size: 2rem; font-weight: 800; color: var(--navy); }
+.card-kpi .label { color: var(--muted); font-size: 0.85rem; }
+.card-kpi .delta-up   { color: var(--ok);  font-size: 0.85rem; font-weight: 600; }
+.card-kpi .delta-down { color: var(--bad); font-size: 0.85rem; font-weight: 600; }
+
+.card-title {
+  font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em;
+  color: var(--muted); text-transform: uppercase;
+}
+.row { display: flex; justify-content: space-between; padding: 0.35rem 0;
+       border-top: 1px solid var(--border); color: var(--slate); font-size: 0.95rem; }
+.row b { color: var(--navy); }
+
+/* Tarjeta tipo notificación (alertas) */
+.notice { display: flex; gap: 0.9rem; align-items: flex-start; }
+.notice .dot { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; }
+.notice .dot.ok   { background: var(--ok-bg); }
+.notice .dot.warn { background: var(--warn-bg); }
+.notice .dot.bad  { background: var(--bad-bg); }
+.notice .title { font-weight: 600; color: var(--navy); }
+.notice .meta  { color: var(--muted); font-size: 0.85rem; }
+
+/* Chips de estado */
+.chip { border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.75rem; font-weight: 600; }
+.chip.ok   { background: var(--ok-bg);   color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad  { background: var(--bad-bg);  color: var(--bad); }
+
+/* --- Componentes nativos de Streamlit ------------------------------ */
+.stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
+  background: var(--teal); color: #fff; border: none; border-radius: 10px;
+  padding: 0.6rem 1.4rem; font-weight: 600; font-size: 1rem;
+}
+.stButton > button:hover, .stDownloadButton > button:hover, .stFormSubmitButton > button:hover {
+  background: var(--teal-dark); color: #fff;
+}
+/* Botón secundario: st.button(..., type="secondary") con borde */
+.stButton > button[kind="secondary"] {
+  background: #fff; color: var(--navy); border: 1px solid var(--border);
+}
+
+.stTabs [data-baseweb="tab-list"] { gap: 1.5rem; border-bottom: 1px solid var(--border); }
+.stTabs [data-baseweb="tab"] { font-weight: 500; color: var(--muted); }
+.stTabs [aria-selected="true"] { color: var(--teal) !important; }
+
+[data-testid="stMetric"] {
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1rem 1.25rem;
+}
+[data-testid="stMetricLabel"] { color: var(--muted); }
+[data-testid="stMetricValue"] { color: var(--navy); font-weight: 800; }
+
+[data-testid="stChatInput"] textarea, .stTextInput input {
+  border-radius: 10px !important;
+}
+[data-testid="stDataFrame"] { border: 1px solid var(--border); border-radius: var(--radius); }
+
+/* =====================================================================
+   Ajustes agregados para app.py
+   ===================================================================== */
+/* Barra superior hecha con columnas de Streamlit: los enlaces son botones que cambian de pestaña */
+.st-key-topbar { border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; margin-bottom: 2rem; }
+.st-key-topbar .brand { font-size: 1.6rem; font-weight: 700; color: #253E53; }
+.st-key-topbar .brand span { color: var(--teal); }
+.st-key-topbar .stButton > button {
+  background: transparent !important; color: var(--navy) !important; border: none !important;
+  padding: 0.25rem 0.5rem; font-weight: 500; font-size: 1rem; box-shadow: none;
+}
+.st-key-topbar .stButton > button:hover { color: var(--teal) !important; }
+.hero-note { color: var(--muted); font-size: 0.9rem; margin-top: 1.25rem; }
+.card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+.section-title { font-size: 1.35rem; font-weight: 700; color: var(--navy-soft); margin: 1.25rem 0 1rem; }
+
+/* Tarjetas de alerta: el texto ocupa todo el ancho disponible */
+.notice > div:last-child { flex: 1; min-width: 0; }
+.alert-body { margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px solid var(--border);
+              color: var(--slate); font-size: 0.95rem; line-height: 1.55; }
+.alert-body p { margin: 0.2rem 0 0.75rem; }
+.alert-body ol { margin: 0.2rem 0 0.75rem 1.2rem; padding: 0; }
+.alert-body li { margin-bottom: 0.25rem; }
+.alert-body .label { font-weight: 600; color: var(--navy); font-size: 0.85rem; }
+.alert-body .related { color: var(--muted); font-size: 0.85rem; margin: -0.35rem 0 0.75rem; }
+
+/* Avatares del chat con los colores de marca (Streamlit usa rojo y naranja por defecto) */
+[data-testid="stChatMessageAvatarUser"] { background: var(--teal-light) !important; color: var(--teal-dark) !important; }
+[data-testid="stChatMessageAvatarAssistant"] { background: var(--teal) !important; color: #fff !important; }
+
+/* Respuestas del agente */
+.answer-meta { display: flex; gap: 0.5rem; align-items: center; margin: 0.25rem 0 0.5rem; }
+
+/* Resumen del periodo: contenedor nativo con aspecto de tarjeta */
+.st-key-period_summary {
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1.25rem 1.5rem; margin: 0.5rem 0 1rem;
+}
+.st-key-period_summary h2 { font-size: 1.1rem; margin-top: 0.75rem; }
+.summary-headline { color: var(--navy); font-size: 1.05rem; font-weight: 600; line-height: 1.5; margin: 0.4rem 0 0; }
+.alert-body .summary-title { font-weight: 700; color: var(--navy); font-size: 1rem; margin-bottom: 0.25rem; }
+
+/* Tablas HTML propias: sin los bordes verticales que Streamlit pone a las tablas */
+.metric-table, .metric-table th, .metric-table td { border-left: none !important; border-right: none !important; }
+.metric-table { border: none !important; }
+.metric-table th { border-top: none !important; }
+
+/* Pestaña Métricas */
+.metric-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.metric-table th { text-align: left; color: var(--muted); font-size: 0.75rem; font-weight: 600;
+                   text-transform: uppercase; letter-spacing: 0.06em;
+                   padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); }
+.metric-table td { vertical-align: top; padding: 0.75rem; border-bottom: 1px solid var(--border);
+                   color: var(--slate); line-height: 1.5; }
+.metric-table tr:last-child td { border-bottom: none; }
+.metric-table td:first-child { color: var(--navy); font-weight: 600; width: 20%; }
+.metric-table td:nth-child(3) { white-space: nowrap; }
+.card code, .hero-sub code {
+  background: var(--teal-light); color: var(--teal-dark); padding: 0.05rem 0.35rem;
+  border-radius: 6px; font-size: 0.8rem; font-weight: 500;
+}
+.rules { margin: 0.5rem 0 0 1.1rem; padding: 0; color: var(--slate); }
+.rules li { margin-bottom: 0.3rem; }
+
+/* La etiqueta de los botones es un <p>: que herede el color del botón y no el de párrafos */
+.stButton > button p, .stFormSubmitButton > button p, .stDownloadButton > button p { color: inherit; }
+
+/* Botón secundario: selector de Streamlit actual además del atributo kind */
+.stButton > button[data-testid="stBaseButton-secondary"] {
+  background: #fff; color: var(--navy); border: 1px solid var(--border);
+}
+.stButton > button[data-testid="stBaseButton-secondary"]:hover {
+  border-color: var(--teal); color: var(--teal-dark); background: #fff;
+}

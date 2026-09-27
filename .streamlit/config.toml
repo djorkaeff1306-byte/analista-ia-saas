@@ -1,0 +1,14 @@
+# Tema visual: SaaS contable, estilo limpio con acento verde azulado
+[theme]
+base = "light"
+primaryColor = "#30ABA9"              # botones, tabs activas, links
+backgroundColor = "#FFFFFF"           # fondo principal
+secondaryBackgroundColor = "#F4F7F9"  # sidebar, inputs, tarjetas suaves
+textColor = "#0F172A"                 # texto principal (azul marino casi negro)
+font = "sans serif"                   # la fuente Inter se carga desde assets/style.css
+
+[client]
+toolbarMode = "minimal"
+
+[server]
+headless = true
